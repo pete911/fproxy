@@ -1,19 +1,23 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
 
-var httpClient = http.Client{
-	Timeout: 10 * time.Second,
-}
+var (
+	proxy  = NewProxy(&http.Client{Timeout: 10 * time.Second})
+	output io.Writer
+)
 
 func init() {
 	log.SetFlags(0)
+	output = os.Stdout
 }
 
 func main() {
@@ -33,42 +37,30 @@ func main() {
 
 func handleFunc(w http.ResponseWriter, r *http.Request) {
 
-	log.Printf("* %s %s", r.URL.Host, r.URL.Port())
-	log.Printf("> request: %s %s %s", r.Method, r.URL.Path, r.Proto)
-	for key, values := range r.Header {
-		log.Printf("> %s: %s", key, strings.Join(values, ", "))
-	}
-	log.Print(">")
-
-	proxyRequest := http.Request{
-		Method: r.Method,
-		URL: r.URL,
-		Header: r.Header,
-		Body: r.Body,
-		ContentLength: r.ContentLength,
-		Close: r.Close,
-	}
-
-	proxyResponse, err := httpClient.Do(&proxyRequest)
+	request, response, err := proxy.Forward(w, r)
 	if err != nil {
-		log.Printf("proxy request: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("500 - proxy error"))
-		return
+		log.Print(err)
 	}
-	defer proxyResponse.Body.Close()
+	fmt.Fprint(output, request.PrettyString(printRequestBody))
+	fmt.Fprint(output, response.PrettyString(printResponseBody))
+}
 
-	// write headers
-	log.Printf("< response: %s", proxyResponse.Status)
-	for key, values := range proxyResponse.Header {
-		log.Printf("< %s: %s", key, strings.Join(values, ", "))
-		for _, value := range values {
-			w.Header().Add(key, value)
+func printRequestBody(_, bodyContentType string) bool {
+
+	for _, allowedContent := range []string{"text", "html", "json", "xml"} {
+		if strings.Contains(bodyContentType, allowedContent) {
+			return true
 		}
 	}
-	w.WriteHeader(proxyResponse.StatusCode)
-	if _, err := io.Copy(w, proxyResponse.Body); err != nil {
-		log.Printf("io copy proxy response: %v", err)
+	return false
+}
+
+func printResponseBody(_, bodyContentType string) bool {
+
+	for _, allowedContent := range []string{"text", "html", "json", "xml"} {
+		if strings.Contains(bodyContentType, allowedContent) {
+			return true
+		}
 	}
-	log.Print("<")
+	return false
 }
