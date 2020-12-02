@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -11,12 +10,23 @@ import (
 )
 
 var (
+	flags  Flags
 	proxy  = NewProxy(&http.Client{Timeout: 10 * time.Second})
 	output io.Writer
 )
 
 func init() {
-	log.SetFlags(0)
+
+	f, err := ParseFlags()
+	if err != nil {
+		Errorf("cannot parse flags: %v", err)
+		os.Exit(1)
+	}
+	flags = f
+	Verbose = flags.Verbose
+	Logf("flags: %+v", flags)
+
+	// TODO - set output to either stdout or file based on flag f.OuputFile == ""
 	output = os.Stdout
 }
 
@@ -26,20 +36,27 @@ func main() {
 	handler.HandleFunc("/", handleFunc)
 
 	s := &http.Server{
-		Addr:           ":8080",
+		Addr:           fmt.Sprintf(":%d", flags.Port),
 		Handler:        handler,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
-	log.Fatalf("listen and serve: %v", s.ListenAndServe())
+
+	if flags.TLSCrt == "" && flags.TLSKey == "" {
+		Errorf("listen and serve: %v", s.ListenAndServe())
+	} else {
+		Errorf("listen and serve TLS: %v", s.ListenAndServeTLS(flags.TLSCrt, flags.TLSKey))
+		os.Exit(1)
+	}
 }
 
 func handleFunc(w http.ResponseWriter, r *http.Request) {
 
 	request, response, err := proxy.Forward(w, r)
 	if err != nil {
-		log.Print(err)
+		Errorf("proxy forward: %v", err)
+		return
 	}
 	fmt.Fprint(output, request.PrettyString(printRequestBody))
 	fmt.Fprint(output, response.PrettyString(printResponseBody))

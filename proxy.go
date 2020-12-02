@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
 )
@@ -82,6 +81,7 @@ func NewProxy(client *http.Client) Proxy {
 
 func (p Proxy) Forward(w http.ResponseWriter, r *http.Request) (Request, Response, error) {
 
+	Logf("received request to %s", r.URL)
 	rBody, requestBody, err := copyBody(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -98,6 +98,7 @@ func (p Proxy) Forward(w http.ResponseWriter, r *http.Request) (Request, Respons
 		Close:         r.Close,
 	}
 
+	Log("forwarding request")
 	response, err := p.client.Do(&proxyRequest)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -105,6 +106,7 @@ func (p Proxy) Forward(w http.ResponseWriter, r *http.Request) (Request, Respons
 		return Request{}, Response{}, fmt.Errorf("proxy request: %+v", err)
 	}
 
+	Logf("received response %s", response.Status)
 	defer response.Body.Close()
 	responseBody, err := ioutil.ReadAll(response.Body)
 	if err != nil {
@@ -141,7 +143,7 @@ func writeResponse(w http.ResponseWriter, statusCode int, header http.Header, bo
 	}
 	w.WriteHeader(statusCode)
 	if _, err := w.Write(body); err != nil {
-		log.Printf("write response body: %v", err)
+		Errorf("write response body: %v", err)
 	}
 }
 
