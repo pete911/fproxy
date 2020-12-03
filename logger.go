@@ -15,7 +15,7 @@ const (
 )
 
 var (
-	Verbose      bool
+	Silent       bool
 	StdOutLogger = newStdOutLogger(os.Stdout)
 	StdErrLogger = newStdErrLogger(os.Stderr)
 )
@@ -38,14 +38,16 @@ func Errorf(format string, v ...interface{}) {
 
 func Log(v ...interface{}) {
 
-	if Verbose {
-		StdOutLogger.Output(calldepth, fmt.Sprint(v...))
+	if Silent {
+		return
 	}
+	StdOutLogger.Output(calldepth, fmt.Sprint(v...))
 }
 
 func Logf(format string, v ...interface{}) {
 
-	if Verbose {
-		StdOutLogger.Output(calldepth, fmt.Sprintf(format, v...))
+	if Silent {
+		return
 	}
+	StdOutLogger.Output(calldepth, fmt.Sprintf(format, v...))
 }

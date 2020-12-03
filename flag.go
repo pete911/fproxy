@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -9,7 +10,7 @@ import (
 
 type Flags struct {
 	Port       int
-	Verbose    bool
+	Silent     bool
 	OutputFile string
 	TLSCrt     string
 	TLSKey     string
@@ -17,8 +18,8 @@ type Flags struct {
 
 func (f Flags) String() string {
 
-	return fmt.Sprintf("verbose: %t output-file: %q tls-crt: %q tls-key: %q",
-		f.Verbose, f.OutputFile, f.TLSCrt, f.TLSKey)
+	return fmt.Sprintf("silent: %t output-file: %q tls-crt: %q tls-key: %q",
+		f.Silent, f.OutputFile, f.TLSCrt, f.TLSKey)
 }
 
 func ParseFlags() (Flags, error) {
@@ -26,7 +27,7 @@ func ParseFlags() (Flags, error) {
 	f := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	port := f.Int("port", getIntEnv("FP_PORT", 8080),
 		"port on which to run proxy server")
-	verbose := f.Bool("verbose", getBoolEnv("FP_VERBOSE", false),
+	silent := f.Bool("silent", getBoolEnv("FP_VERBOSE", false),
 		"verbose, ")
 	outputFile := f.String("output-file", getStringEnv("FP_OUTPUT_FILE", ""),
 		"file where to save requests and responses, if flag is not set, output is sent to std out")
@@ -40,7 +41,7 @@ func ParseFlags() (Flags, error) {
 
 	flags := Flags{
 		Port:       intValue(port),
-		Verbose:    boolValue(verbose),
+		Silent:     boolValue(silent),
 		OutputFile: stringValue(outputFile),
 		TLSCrt:     stringValue(tlsCrt),
 		TLSKey:     stringValue(tlsKey),
@@ -55,7 +56,9 @@ func (f Flags) validate() error {
 	if f.Port < 1 || f.Port > 65535 {
 		return fmt.Errorf("invalid port %d", f.Port)
 	}
-	// TODO f.TLSKey and f.TLSCrt needs to be set or unset, not one or the other
+	if (f.TLSCrt == "") != (f.TLSKey == "") {
+		return errors.New("both tls-crt and tls-key has to be either set or unset")
+	}
 	return nil
 }
 

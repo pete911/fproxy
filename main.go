@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -10,9 +9,11 @@ import (
 )
 
 var (
-	flags  Flags
 	proxy  = NewProxy(&http.Client{Timeout: 10 * time.Second})
-	output io.Writer
+	port   int
+	tlsKey string
+	tlsCrt string
+	output *os.File
 )
 
 func init() {
@@ -22,12 +23,24 @@ func init() {
 		Errorf("cannot parse flags: %v", err)
 		os.Exit(1)
 	}
-	flags = f
-	Verbose = flags.Verbose
-	Logf("flags: %+v", flags)
 
-	// TODO - set output to either stdout or file based on flag f.OuputFile == ""
-	output = os.Stdout
+	Logf("flags: %+v", f)
+	Silent = f.Silent
+	tlsCrt = f.TLSCrt
+	tlsKey = f.TLSKey
+	port = f.Port
+
+	if f.OutputFile == "" {
+		output = os.Stdout
+		return
+	}
+
+	outputFile, err := os.OpenFile(f.OutputFile, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		Errorf("cannot open %s output file: %v", f.OutputFile, err)
+		os.Exit(1)
+	}
+	output = outputFile
 }
 
 func main() {
@@ -36,17 +49,17 @@ func main() {
 	handler.HandleFunc("/", handleFunc)
 
 	s := &http.Server{
-		Addr:           fmt.Sprintf(":%d", flags.Port),
+		Addr:           fmt.Sprintf(":%d", port),
 		Handler:        handler,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	if flags.TLSCrt == "" && flags.TLSKey == "" {
+	if tlsCrt == "" && tlsKey == "" {
 		Errorf("listen and serve: %v", s.ListenAndServe())
 	} else {
-		Errorf("listen and serve TLS: %v", s.ListenAndServeTLS(flags.TLSCrt, flags.TLSKey))
+		Errorf("listen and serve TLS: %v", s.ListenAndServeTLS(tlsCrt, tlsKey))
 		os.Exit(1)
 	}
 }
@@ -58,6 +71,9 @@ func handleFunc(w http.ResponseWriter, r *http.Request) {
 		Errorf("proxy forward: %v", err)
 		return
 	}
+
+	now := time.Now().Format("20060102-15:04:05")
+	fmt.Fprintf(output, "[%s %s]\n", now, r.URL)
 	fmt.Fprint(output, request.PrettyString(printRequestBody))
 	fmt.Fprint(output, response.PrettyString(printResponseBody))
 }
